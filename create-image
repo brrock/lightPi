@@ -94,7 +94,7 @@ EOF
 echo "==> Setting up ssh and removing root password..."
 cat <<EOF | arch-chroot "${mount}"
 passwd -l root
-pacman -S openssh
+pacman -S --noconfirm --needed openssh
 systemctl enable sshd
 EOF
 echo "==> Setting up systemd service for expanding fs on first boot..."
