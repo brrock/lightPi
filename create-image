@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# Creates an Arch Linux ARM image e.g. for installation to an SD card
+# Adapted from https://github.com/andrewboring/alarm-images/blob/master/scripts/create-image
+
+# Set up script error handling see https://disconnected.systems/blog/another-bash-strict-mode for details
+set -uo pipefail
+trap 's=$?; echo "$0: Error on line "$LINENO": $BASH_COMMAND"; exit $s' ERR
+IFS=$'\n\t'
+
+# Ensure we are root
+if [[ $EUID -ne 0 ]]; then
+  echo "This script must be run as root" 1>&2
+  exit 1
+fi
+
+# Some useful constants
+mount="mnt" # Local directory to mount the image (automatically created/delete as needed)
+base_url="http://archlinuxarm.org/os"
+
+# Grab the first two arguments, using the defaults if not set
+# For example, to create a 4 gig image called archlinux-rpi-armv7.img
+# that automatically runs ./setup1 and ./setup2 inside the new root, use:
+#
+#   ./create-image 4G rpi-armv7 ./setup1 ./setup2
+#
+
+if [ $# -lt 2 ]; then
+  echo "Usage: $0 <size> <arch> <setup scripts...>"
+  exit 1
+fi
+
+size="$1"
+shift
+
+arch="$1"
+shift
+
+file="ArchLinuxARM-${arch}-latest.tar.gz"
+image="archlinux-${arch}.img"
+
+# Local setup script to run inside the image
+script_sources=("$@")
+script_destdir="/setup-scripts"
+loopdev=
+
+# Tasks to run when the shell exits for any reason, unmount the image and
+# general cleanup
+cleanup() {
+  rm -rf "${mount}${script_destdir}"
+  if [[ -d "${mount}" ]]; then
+    umount -R "${mount}" || true
+    rmdir "${mount}" || true
+  fi
+  [ -n "${loopdev}" ] && losetup --detach "${loopdev}" || true
+}
+trap cleanup EXIT
+
+echo "==> Downloading Arch Linux ARM tarball (${file})..."
+[ ! -f "${file}" ] && wget --quiet "${base_url}/${file}"
+
+echo "==> Creating image..."
+dd if=/dev/zero of="${image}" bs=1 seek="${size}" count=0
+loopdev=$(losetup --find --show "${image}")
+
+echo "==> Partitioning image..."
+parted --script "${loopdev}" mklabel msdos
+parted --script "${loopdev}" mkpart primary fat32 0% 200M
+parted --script "${loopdev}" mkpart primary ext4 200M 100%
+
+echo "==> Formatting image..."
+bootdev=$(ls "${loopdev}"*1)
+rootdev=$(ls "${loopdev}"*2)
+mkfs.vfat -F32 ${bootdev}
+mkfs.ext4 -F ${rootdev}
+
+echo "==> Mounting image..."
+[ ! -d "${mount}" ] && mkdir "${mount}"
+mount "${rootdev}" "${mount}"
+[ ! -d "${mount}/boot" ] && mkdir "${mount}/boot"
+mount "${bootdev}" "${mount}/boot"
+
+echo "==> Installing Arch Linux ARM root tree to image..."
+tar -xpf "${file}" -C "${mount}" 2> >(grep -v "Ignoring unknown extended header keyword")
+
+echo "==> Installing overlay tree to image..."
+rsync -rlDvP "$(dirname $0)/overlay/" "${mount}/"
+
+echo "==> Setting up pacman keyring..."
+cat <<EOF | arch-chroot "${mount}"
+pacman-key --init
+pacman-key --populate archlinuxarm
+EOF
+
+echo "==> Setting up systemd service for expanding fs on first boot..."
+cat <<EOF | arch-chroot "${mount}"
+systemctl enable expand-rootfs
+EOF
+
+echo "==> Setting up setup scripts dir..."
+mkdir "${mount}${script_destdir}"
+
+# Run setup scripts inside new root
+for script in "${script_sources[@]}"; do
+  script_dest="${script_destdir}/$(basename "$script")"
+
+  echo "==> Installing $script to $script_dest in new root..."
+  install -Dm755 "$script" "${mount}${script_dest}"
+
+  echo "==> Running $script_dest..."
+  arch-chroot "${mount}" "${script_dest}"
+
+  echo "==> Removing $script_dest from new root..."
+  rm "${mount}${script_dest}"
+done
+
+echo "==> Cleaning pacman cache..."
+cat <<EOF | arch-chroot "${mount}"
+yes | pacman -Scc
+EOF

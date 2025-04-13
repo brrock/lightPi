@@ -1,0 +1,92 @@
+# Adapted from https://github.com/andrewboring/alarm-images/blob/master/.github/workflows/build.yml
+
+name: Build Images
+
+on:
+  push:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ['Trigger Build']
+    types: [completed]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: ['aarch64', 'rpi-armv7', 'rpi-aarch64']
+        flavor: ['vanilla']
+        include:
+        - arch: rpi-aarch64
+          flavor: avahi
+        - arch: rpi-aarch64
+          flavor: fwcd
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Configure Git user
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y parted wget dosfstools zip arch-install-scripts
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+      with:
+        platforms: arm,arm64
+
+    - name: Build image
+      shell: bash
+      run: |
+        scripts=()
+        for script_name in "${{ matrix.arch }}" "${{ matrix.flavor }}" "${{ matrix.arch }}-${{ matrix.flavor }}"; do
+          script_path="setup/$script_name"
+          if [ -f "$script_path" ]; then
+            scripts+=("$script_path")
+          fi
+        done
+        sudo ./create-image 4G ${{ matrix.arch }} "${scripts[@]}"
+
+    - name: Rename image
+      id: rename-image
+      run: |
+        image_in_name="archlinux-${{ matrix.arch }}.img"
+        image_out_name="archlinux-${{ matrix.arch }}-${{ matrix.flavor }}-$(date '+%Y-%m-%d').img"
+        mv "$image_in_name" "$image_out_name"
+        echo "image_name=$image_out_name" >> "$GITHUB_OUTPUT"
+
+    - name: Compress image
+      run: zip -v "${{ steps.rename-image.outputs.image_name }}"{.zip,}
+
+    - name: Upload image
+      uses: actions/upload-artifact@v4
+      with:
+        name: "${{ steps.rename-image.outputs.image_name }}.zip"
+        path: "${{ steps.rename-image.outputs.image_name }}.zip"
+
+    - name: Create release (if needed)
+      if: github.ref == 'refs/heads/main'
+      id: create-release
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        snapshot="$(date '+%Y-%m-%d')"
+        tag="$snapshot"
+        echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        gh release create "$tag" --title "$snapshot" || true
+
+    - name: Upload release assets
+      if: github.ref == 'refs/heads/main'
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GH_REPO: ${{ github.repository }}
+      run: |
+        tag="${{ steps.create-release.outputs.tag }}"
+        archive="${{ steps.rename-image.outputs.image_name }}.zip"
+        gh release upload "$tag" "$archive" --clobber
+
