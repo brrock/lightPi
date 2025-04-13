@@ -1,0 +1,18 @@
+# Set the system locale — affects language, date/time formats, etc.
+# Common examples: en_US.UTF-8, en_GB.UTF-8, de_DE.UTF-8
+LOCALE=en_GB.UTF-8
+
+# Choose the type of network connection - only works if have fwcd image:
+#   wifi     - connect to a wireless network
+#   ethernet - use wired Ethernet (DHCP)
+NETWORK_TYPE=ethernet
+# If using Wi-Fi, provide your network credentials:
+# SSID = name of the Wi-Fi network
+# PASSWORD = password for the network
+#WIFI_SSID=MyHomeWiFi
+#WIFI_PASSWORD=SuperSecret123
+
+# (Optional)
+# TIMEZONE=Europe/London
+# HOSTNAME=lightpi
+

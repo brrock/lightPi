@@ -1,0 +1,12 @@
+[Unit]
+Description=Run first boot setup
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/first-boot-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+

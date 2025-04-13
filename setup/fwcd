@@ -25,7 +25,7 @@ packages=(
   curl
   git
   htop
-  iwd
+  networkmanager
   man-db
   neofetch
   neovim
@@ -41,7 +41,7 @@ packages=(
 pacman -Syu --noconfirm --needed "${packages[@]}"
 
 # Enable services
-systemctl enable avahi-daemon iwd
+systemctl enable avahi-daemon NetworkManager
 
 # Prepare system for containers (e.g. for use with K3s)
 # https://github.com/k3s-io/k3s/issues/2067#issuecomment-664048424
