@@ -74,6 +74,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
       run: |
+        set -euo
         snapshot="$(date '+%Y-%m-%d')"
         tag="$snapshot"
         echo "snapshot=$snapshot" >> "$GITHUB_OUTPUT"
