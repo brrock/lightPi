@@ -91,10 +91,16 @@ cat <<EOF | arch-chroot "${mount}"
 pacman-key --init
 pacman-key --populate archlinuxarm
 EOF
-
+echo "==> Setting up ssh and removing root password..."
+cat <<EOF | arch-chroot "${mount}"
+passwd -l root
+pacman -S openssh
+systemctl enable sshd
+EOF
 echo "==> Setting up systemd service for expanding fs on first boot..."
 cat <<EOF | arch-chroot "${mount}"
 systemctl enable expand-rootfs
+systemctl enable first-boot
 EOF
 
 echo "==> Setting up setup scripts dir..."

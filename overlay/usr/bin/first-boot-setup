@@ -86,6 +86,34 @@ if command -v nmcli >/dev/null 2>&1; then
 else
   echo "⚠️ nmcli not found. Skipping network setup."
 fi
+# --- Create user and delete default 'arch' user ---
+if [ -n "$NEW_USERNAME" ] && [ -n "$NEW_PASSWORD" ]; then
+  echo "👤 Creating new user: $NEW_USERNAME"
+
+  # Create user with home directory
+  useradd -m -G wheel -s /bin/bash "$NEW_USERNAME"
+
+  # Set password
+  echo "$NEW_USERNAME:$NEW_PASSWORD" | chpasswd
+
+  # Ensure sudo is available and wheel group has sudo rights
+  if command -v sudo >/dev/null 2>&1; then
+    echo "🛡️ Granting sudo access to $NEW_USERNAME"
+    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+  else
+    echo "⚠️ sudo not found. Install it manually if needed."
+  fi
+
+  # Remove default 'arch' user
+  if id "arch" >/dev/null 2>&1; then
+    echo "🗑️ Removing default 'arch' user..."
+    userdel -r alarm
+  else
+    echo "ℹ️ Default 'arch' user not found. Skipping removal."
+  fi
+else
+  echo "⚠️ NEW_USERNAME or NEW_PASSWORD not specified. Skipping user creation and deletion."
+fi
 
 # --- Finalize ---
 touch "$MARKER_FILE"

@@ -36,7 +36,6 @@ packages=(
   sudo
   tmux
   tree
-  zsh
 )
 pacman -Syu --noconfirm --needed "${packages[@]}"
 
