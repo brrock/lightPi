@@ -1,18 +1,39 @@
+# -------------------------------
+# 🌐 Locale Configuration
+# -------------------------------
 # Set the system locale — affects language, date/time formats, etc.
 # Common examples: en_US.UTF-8, en_GB.UTF-8, de_DE.UTF-8
 LOCALE=en_GB.UTF-8
 
-# Choose the type of network connection - only works if have fwcd image:
+# -------------------------------
+# 🌍 Network Configuration
+# -------------------------------
+# Choose the type of network connection:
 #   wifi     - connect to a wireless network
 #   ethernet - use wired Ethernet (DHCP)
 NETWORK_TYPE=ethernet
+
 # If using Wi-Fi, provide your network credentials:
 # SSID = name of the Wi-Fi network
 # PASSWORD = password for the network
 #WIFI_SSID=MyHomeWiFi
 #WIFI_PASSWORD=SuperSecret123
 
-# (Optional)
-# TIMEZONE=Europe/London
-# HOSTNAME=lightpi
+# -------------------------------
+# 🕒 Timezone (Optional)
+# -------------------------------
+# Format: Region/City — e.g., Europe/London, America/New_York
+#TIMEZONE=Europe/London
 
+# -------------------------------
+# 🖥️ Hostname (Optional)
+# -------------------------------
+# Custom hostname for the device
+#HOSTNAME=lightpi
+
+# -------------------------------
+# 👤 User Setup
+# -------------------------------
+# Define the new default user and password
+NEW_USERNAME=lightuser
+NEW_PASSWORD=supersecret123
