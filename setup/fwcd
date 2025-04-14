@@ -30,7 +30,7 @@ packages=(
   neofetch
   neovim
   pacman-contrib
-  paru-bin
+  paru
   python
   rsync
   sudo
