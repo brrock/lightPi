@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 
 CONFIG_FILE="/lightPi.txt"
 MARKER_FILE="/etc/first-boot-done"
@@ -105,7 +105,7 @@ if [ -n "$NEW_USERNAME" ] && [ -n "$NEW_PASSWORD" ]; then
   fi
 
   # Remove default 'arch' user
-  if id "arch" >/dev/null 2>&1; then
+  if id "alarm" >/dev/null 2>&1; then
     echo "🗑️ Removing default 'arch' user..."
     userdel -r alarm
   else
