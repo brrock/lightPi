@@ -1,121 +1,137 @@
 #!/bin/bash
+set -euo pipefail
 
 CONFIG_FILE="/lightPi.txt"
 MARKER_FILE="/etc/first-boot-done"
 
+# --- Logging helper ---
+log() {
+  echo -e "$1"
+}
+
+error_exit() {
+  echo -e "❌ ERROR: $1" >&2
+  exit 1
+}
+
 # --- Check if this is the first boot ---
 if [ -f "$MARKER_FILE" ]; then
-  echo "✅ First boot setup already completed. Skipping."
+  log "✅ First boot setup already completed. Skipping."
   exit 0
 fi
 
 # --- Check if config file exists ---
 if [ ! -f "$CONFIG_FILE" ]; then
-  echo "❌ Config file $CONFIG_FILE not found. Exiting."
-  exit 1
+  error_exit "Config file $CONFIG_FILE not found. Exiting."
 fi
 
 # --- Load config ---
-echo "📄 Loading config from $CONFIG_FILE..."
+log "📄 Loading config from $CONFIG_FILE..."
+# shellcheck source=/lightPi.txt
 source "$CONFIG_FILE"
 
 # --- Set Locale ---
-if [ -n "$LOCALE" ]; then
-  echo "🌐 Configuring locale: $LOCALE"
-  
-  # Enable the locale in /etc/locale.gen if not already enabled
+if [ -n "${LOCALE:-}" ]; then
+  log "🌐 Configuring locale: $LOCALE"
+
   if grep -q "^# *$LOCALE" /etc/locale.gen; then
-    echo "🔧 Enabling $LOCALE in /etc/locale.gen"
+    log "🔧 Enabling $LOCALE in /etc/locale.gen"
     sed -i "s/^# *\($LOCALE\)/\1/" /etc/locale.gen
   elif ! grep -q "^$LOCALE" /etc/locale.gen; then
-    echo "➕ Adding $LOCALE to /etc/locale.gen"
+    log "➕ Adding $LOCALE to /etc/locale.gen"
     echo "$LOCALE UTF-8" >> /etc/locale.gen
   fi
 
-  echo "🛠️ Running locale-gen..."
-  locale-gen
+  log "🛠️ Running locale-gen..."
+  locale-gen || error_exit "locale-gen failed."
 
-  echo "🌐 Setting system locale to $LOCALE"
+  log "🌐 Setting system locale to $LOCALE"
   echo "LANG=$LOCALE" > /etc/locale.conf
 else
-  echo "⚠️ LOCALE not specified. Skipping locale setup."
+  log "⚠️ LOCALE not specified. Skipping locale setup."
 fi
 
 # --- Set Hostname (Arch-style) ---
-if [ -n "$HOSTNAME" ]; then
-  echo "🖥️ Setting hostname to $HOSTNAME"
-  echo "$HOSTNAME" > /etc/hostname  # Simpler way for arch
+if [ -n "${HOSTNAME:-}" ]; then
+  log "🖥️ Setting hostname to $HOSTNAME"
+  echo "$HOSTNAME" > /etc/hostname
   sed -i "s/127.0.0.1.*/127.0.0.1   $HOSTNAME localhost/" /etc/hosts
 else
-  echo "⚠️ HOSTNAME not specified. Skipping hostname setup."
+  log "⚠️ HOSTNAME not specified. Skipping hostname setup."
 fi
 
 # --- Set Timezone ---
-if [ -n "$TIMEZONE" ]; then
-  echo "🕒 Setting timezone to $TIMEZONE"
+if [ -n "${TIMEZONE:-}" ]; then
+  log "🕒 Setting timezone to $TIMEZONE"
   ln -sf "/usr/share/zoneinfo/$TIMEZONE" /etc/localtime
 else
-  echo "⚠️ TIMEZONE not specified. Skipping timezone setup."
+  log "⚠️ TIMEZONE not specified. Skipping timezone setup."
 fi
 
 # --- Network Setup (if nmcli is available) ---
 if command -v nmcli >/dev/null 2>&1; then
-  echo "📡 NetworkManager is available."
+  log "📡 NetworkManager is available."
 
-  case "$NETWORK_TYPE" in
+  case "${NETWORK_TYPE:-}" in
     wifi)
-      if [ -n "$WIFI_SSID" ] && [ -n "$WIFI_PASSWORD" ]; then
-        echo "📶 Connecting to Wi-Fi: $WIFI_SSID"
-        nmcli device wifi connect "$WIFI_SSID" password "$WIFI_PASSWORD" || {
-          echo "❌ Failed to connect to Wi-Fi."
-        }
+      if [ -n "${WIFI_SSID:-}" ] && [ -n "${WIFI_PASSWORD:-}" ]; then
+        log "📶 Connecting to Wi-Fi: $WIFI_SSID"
+        if ! nmcli device wifi connect "$WIFI_SSID" password "$WIFI_PASSWORD"; then
+          error_exit "Failed to connect to Wi-Fi."
+        fi
       else
-        echo "⚠️ WIFI_SSID or WIFI_PASSWORD missing. Skipping Wi-Fi setup."
+        log "⚠️ WIFI_SSID or WIFI_PASSWORD missing. Skipping Wi-Fi setup."
       fi
       ;;
     ethernet)
-      echo "🔌 Connecting via Ethernet (DHCP)"
-      nmcli device connect eth0 || {
-        echo "❌ Failed to bring up Ethernet."
-      }
+      log "🔌 Connecting via Ethernet (DHCP)"
+      if ! nmcli device connect eth0; then
+        error_exit "Failed to bring up Ethernet."
+      fi
+      ;;
+    "")
+      log "⚠️ NETWORK_TYPE is not specified. Skipping network setup."
       ;;
     *)
-      echo "⚠️ Unknown NETWORK_TYPE: $NETWORK_TYPE. Skipping network setup."
+      log "⚠️ Unknown NETWORK_TYPE: $NETWORK_TYPE. Skipping network setup."
       ;;
   esac
 else
-  echo "⚠️ nmcli not found. Skipping network setup."
+  log "⚠️ nmcli not found. Skipping network setup."
 fi
+
 # --- Create user and delete default 'arch' user ---
-if [ -n "$NEW_USERNAME" ] && [ -n "$NEW_PASSWORD" ]; then
-  echo "👤 Creating new user: $NEW_USERNAME"
+if [ -n "${NEW_USERNAME:-}" ] && [ -n "${NEW_PASSWORD:-}" ]; then
+  log "👤 Creating new user: $NEW_USERNAME"
 
   # Create user with home directory
-  useradd -m -G wheel -s /bin/bash "$NEW_USERNAME"
+  useradd -m -G wheel -s /bin/bash "$NEW_USERNAME" || \
+    error_exit "Failed to create user $NEW_USERNAME."
 
   # Set password
-  echo "$NEW_USERNAME:$NEW_PASSWORD" | chpasswd
+  echo "$NEW_USERNAME:$NEW_PASSWORD" | chpasswd || \
+    error_exit "Failed to set password for $NEW_USERNAME."
 
-  # Ensure sudo is available and wheel group has sudo rights
+  # Ensure sudo access for wheel group
   if command -v sudo >/dev/null 2>&1; then
-    echo "🛡️ Granting sudo access to $NEW_USERNAME"
-    sed -i 's/^# %wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers
+    log "🛡️ Granting sudo access to $NEW_USERNAME"
+    sed -i 's/^# *%wheel ALL=(ALL:ALL) ALL/%wheel ALL=(ALL:ALL) ALL/' /etc/sudoers || \
+      error_exit "Failed to update /etc/sudoers for sudo rights."
   else
-    echo "⚠️ sudo not found. Install it manually if needed."
+    log "⚠️ sudo not found. Please install it manually if needed."
   fi
 
-  # Remove default 'arch' user
+  # Remove default 'arch' user, if it exists
   if id "alarm" >/dev/null 2>&1; then
-    echo "🗑️ Removing default 'arch' user..."
-    userdel -r alarm
+    log "🗑️ Removing default 'alarm' user..."
+    userdel -r alarm || error_exit "Failed to remove default 'alarm' user."
   else
-    echo "ℹ️ Default 'arch' user not found. Skipping removal."
+    log "ℹ️ Default 'alarm' user not found. Skipping removal."
   fi
 else
-  echo "⚠️ NEW_USERNAME or NEW_PASSWORD not specified. Skipping user creation and deletion."
+  log "⚠️ NEW_USERNAME or NEW_PASSWORD not specified. Skipping user creation and deletion."
 fi
 
 # --- Finalize ---
-touch "$MARKER_FILE"
-echo "✅ First boot setup complete."
-
+touch "$MARKER_FILE" || error_exit "Failed to create marker file."
+log "✅ First boot setup complete."

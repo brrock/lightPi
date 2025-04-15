@@ -118,7 +118,7 @@ for script in "${script_sources[@]}"; do
   rm "${mount}${script_dest}"
 done
 cat <<EOF | arch-chroot "${mount}"
-pacman -Sy --noconfirm --needed sudo
+pacman -Sy --noconfirm --needed sudo glibc-locales
 EOF
 echo "==> Cleaning pacman cache..."
 cat <<EOF | arch-chroot "${mount}"
